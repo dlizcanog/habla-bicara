@@ -137,6 +137,30 @@ svg{flex:none}
 .sheet .secondary{border:1px solid var(--line);background:transparent;color:var(--ink)}
 .sheet .small{font-size:13px;color:var(--muted)}
 .sheet code{font-size:13px;background:var(--bg);border-radius:6px;padding:1px 5px}
+
+/* Memory and corrections */
+.check,.learned{margin:2px 0 0;font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+.check{font-style:italic}
+.check b,.learned b{font:800 10px/1 var(--font-display);font-style:normal;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:6px}
+.learned{color:var(--muted)}
+.tag-fix{border-color:var(--ink);color:var(--ink)}
+.sheet textarea{width:100%;font:400 16px/1.4 var(--font-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;resize:vertical;min-height:64px}
+.rules{list-style:none;padding:0!important;margin:0;display:grid;gap:6px}
+.rules li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:6px;background:var(--bg);border-radius:12px;padding:6px 4px 6px 12px;font-size:15px}
+.rules li span{overflow-wrap:anywhere;padding-top:7px}
+.del{background:none;border:0;color:var(--muted);min-width:36px;min-height:36px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center}
+.del:hover{background:var(--hover);color:var(--ink)}
+.addrule{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+.addrule .secondary{flex:none;padding:0 16px}
+.seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border-radius:14px;padding:4px;gap:4px}
+.seg button{min-height:42px;border:0;border-radius:10px;background:transparent;color:var(--muted);font:700 15px var(--font-display)}
+.seg button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.fixref{background:var(--bg);border-radius:12px;padding:10px 12px;display:grid;gap:2px}
+.fixref .out{font-size:17px}
+.fixrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
+.iconbtn{min-width:48px;min-height:48px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);display:inline-flex;align-items:center;justify-content:center}
+.iconbtn.on{background:var(--es);color:var(--es-ink);border-color:var(--es)}
+.sheet .err{color:var(--id);font-weight:700}
 </style>
 </head>
 <body>
@@ -145,8 +169,8 @@ svg{flex:none}
     <h1 class="brand"><span class="w w-es">Habla</span><span class="dot">·</span><span class="w w-id">Bicara</span></h1>
     <div class="tools">
       <button id="voiceBtn" class="chip icon-only" type="button" aria-pressed="true" aria-label="Leer traducciones en voz alta"></button>
-      <button id="keyBtn" class="chip" type="button">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>Clave
+      <button id="memBtn" class="chip" type="button">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5a2 2 0 0 1 2-2h12v15H7a2 2 0 0 0-2 2z"/><path d="M5 20a2 2 0 0 0 2 1h12v-3"/><path d="M9 8h6M9 11h4"/></svg>Memoria
       </button>
       <button id="clearBtn" class="chip icon-only" type="button" aria-label="Nueva conversación">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span id="clearLabel" class="lbl">Nueva</span>
@@ -214,10 +238,59 @@ svg{flex:none}
   </form>
 </div>
 
+<div id="memSheet" class="scrim" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="memTitle">
+    <h2 id="memTitle">Memoria del traductor</h2>
+    <p>Todo lo que hay aquí se usa en cada traducción. Se guarda solo en este teléfono.</p>
+    <h3>Situación de hoy</h3>
+    <label for="memContext" class="small">Dónde estás y con quién hablas. Ayuda a elegir el tono y las palabras.</label>
+    <textarea id="memContext" rows="2" placeholder="Ej.: Estoy en Ubud alquilando una moto. Hablo con el dueño del taller, un señor mayor."></textarea>
+    <h3>Lo que ha aprendido <span id="ruleCount"></span></h3>
+    <ul id="ruleList" class="rules"></ul>
+    <p id="ruleEmpty" class="small">Todavía nada. Toca Corregir en cualquier traducción, o agrega una regla aquí abajo.</p>
+    <form class="addrule" id="ruleForm" autocomplete="off">
+      <input id="ruleInput" type="text" placeholder="Ej.: A los conductores diles “Pak”" aria-label="Nueva regla">
+      <button class="secondary" type="submit">Agregar</button>
+    </form>
+    <h3>Calidad de traducción</h3>
+    <div class="seg" role="radiogroup" aria-label="Calidad de traducción">
+      <button type="button" role="radio" data-q="fast" aria-checked="true">Rápida</button>
+      <button type="button" role="radio" data-q="precise" aria-checked="false">Precisa</button>
+    </div>
+    <p class="small">Rápida responde en uno o dos segundos. Precisa usa un modelo más fuerte: el bahasa sale más natural, pero tarda un poco más y cuesta más por frase.</p>
+    <div class="row">
+      <button class="secondary" type="button" id="openKeyBtn">Cambiar clave</button>
+      <button class="primary" type="button" id="memClose">Listo</button>
+    </div>
+  </div>
+</div>
+
+<div id="fixSheet" class="scrim" hidden>
+  <form class="sheet" id="fixForm" role="dialog" aria-modal="true" aria-labelledby="fixTitle" autocomplete="off">
+    <h2 id="fixTitle">Corregir y enseñar</h2>
+    <div class="fixref">
+      <p class="src" id="fixSrc"></p>
+      <p class="out" id="fixOut"></p>
+    </div>
+    <label for="fixText">¿Qué estuvo mal?</label>
+    <div class="fixrow">
+      <textarea id="fixText" rows="3" placeholder="Ej.: Con gente joven no uses “Anda”, usa “kamu”. / “Ojek” es mototaxi. / La frase correcta es…"></textarea>
+      <button type="button" id="fixMic" class="iconbtn" aria-label="Dictar la corrección en español"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+    </div>
+    <p class="small">Escríbelo en español o en inglés. La traducción se corrige ahora y lo aprendido se usa en las siguientes.</p>
+    <p class="err" id="fixErr" hidden></p>
+    <div class="row">
+      <button class="secondary" type="button" id="fixCancel">Cancelar</button>
+      <button class="primary" type="submit" id="fixSave">Corregir y aprender</button>
+    </div>
+  </form>
+</div>
+
 <script>
 (function(){
   "use strict";
-  var MODEL = "claude-haiku-5-5";
+  var MODELS = { fast:"claude-haiku-5-5", precise:"claude-sonnet-5-5" };
+  var SYSTEM = "You are a live interpreter in a face-to-face conversation between Diego, a Colombian Spanish speaker, and a person who speaks Bahasa Indonesia. You translate one message at a time, in the exact direction you are told, and reply with the translation only.";
   var LANG = {
     es: { code:"ES", name:"Español", promptName:"Spanish", rec:"es-CO",
           style:"Write natural Latin American Spanish as spoken in Colombia.",
@@ -231,8 +304,8 @@ svg{flex:none}
     { id:"ex2", from:"id", to:"es", src:"Sekitar dua ratus ribu rupiah, Pak.", out:"Más o menos doscientas mil rupias, señor.", status:"done", example:true }
   ];
   var ERR = {
-    nokey:"Falta tu clave de Claude. Toca Clave arriba para agregarla.",
-    badkey:"La clave no es válida o fue revocada. Revísala en Clave.",
+    nokey:"Falta tu clave de Claude. Toca Memoria › Cambiar clave para agregarla.",
+    badkey:"La clave no es válida o fue revocada. Revísala en Memoria › Cambiar clave.",
     nocredit:"La cuenta de la clave no tiene saldo o permiso. Revisa la consola de Anthropic.",
     ratelimit:"Muchas traducciones seguidas. Espera un momento y toca Reintentar.",
     busy:"Claude está ocupado en este momento. Toca Reintentar.",
@@ -241,11 +314,15 @@ svg{flex:none}
     other:"No se pudo traducir. Toca Reintentar."
   };
   var RETRY = { ratelimit:1, busy:1, offline:1, empty:1, other:1, nokey:1, badkey:1, nocredit:1 };
+  var SVG = function(body){ return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + body + '</svg>'; };
   var ICON = {
-    speaker:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4.5 4.5 0 0 1 0 6"/><path d="M19 6.5a8 8 0 0 1 0 11"/></svg>',
-    mute:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/></svg>',
-    expand:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
-    retry:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v6h6"/><path d="M5.5 15a8 8 0 1 0 1.8-8.3L4 10"/></svg>'
+    speaker:SVG('<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4.5 4.5 0 0 1 0 6"/><path d="M19 6.5a8 8 0 0 1 0 11"/>'),
+    mute:SVG('<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>'),
+    expand:SVG('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
+    retry:SVG('<path d="M4 4v6h6"/><path d="M5.5 15a8 8 0 1 0 1.8-8.3L4 10"/>'),
+    pencil:SVG('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>'),
+    eye:SVG('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+    x:SVG('<path d="M6 6l12 12M18 6L6 18"/>')
   };
 
   var $ = function(s){ return document.querySelector(s); };
@@ -261,17 +338,74 @@ svg{flex:none}
   var apiKey = recall("hb-key") || "";
   var turns = recall("hb-turns-v1");
   if (!Array.isArray(turns) || !turns.length) turns = EXAMPLES.slice();
-  turns.forEach(function(t){ if (t.status === "pending"){ t.status = "error"; t.error = "other"; } });
+  turns.forEach(function(t){
+    if (t.status === "pending" || t.status === "live"){ t.status = "error"; t.error = "other"; }
+    t.checking = false;
+  });
   var voiceOn = canSpeak && recall("hb-voice") !== false;
-  var notice = null; // {text, action?}
+  var quality = recall("hb-quality") === "precise" ? "precise" : "fast";
+  var memory = recall("hb-memory-v1");
+  if (!memory || typeof memory !== "object") memory = {};
+  if (typeof memory.context !== "string") memory.context = "";
+  if (!Array.isArray(memory.rules)) memory.rules = [];
+  var notice = null;
 
   function save(){ store("hb-turns-v1", turns.filter(function(t){ return !t.example && t.status !== "live"; }).slice(-60)); }
+  function saveMemory(){ store("hb-memory-v1", memory); }
+  var uid = function(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
 
-  /* ---------- translation (Claude API) ---------- */
+  /* ---------- Claude API ---------- */
+  function callClaude(o){
+    if (!apiKey) return Promise.reject("nokey");
+    return fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{
+        "content-type":"application/json",
+        "x-api-key":apiKey,
+        "anthropic-version":"2023-06-01",
+        "anthropic-dangerous-direct-browser-access":"true"
+      },
+      body:JSON.stringify({ model:o.model, max_tokens:o.maxTokens || 600, system:o.system, messages:[{ role:"user", content:o.prompt }] })
+    }).then(function(res){
+      return res.json().catch(function(){ return null; }).then(function(data){
+        if (!res.ok){
+          var s = res.status;
+          if (s === 401) markKey(true);
+          throw (s === 401 ? "badkey" : (s === 403 || s === 402) ? "nocredit" : s === 429 ? "ratelimit" : (s === 529 || s >= 500) ? "busy" : "other");
+        }
+        var text = ((data && data.content) || []).filter(function(b){ return b.type === "text"; }).map(function(b){ return b.text; }).join("").trim();
+        if (!text) throw "empty";
+        return text;
+      });
+    }, function(){ throw "offline"; });
+  }
+  function codeOf(e){ return (typeof e === "string" && ERR[e]) ? e : "other"; }
+  function tidy(s){
+    s = String(s || "").trim();
+    var m = s.match(/^["“«](.*)["”»]$/s);
+    return m ? m[1].trim() : s;
+  }
+  function parseJson(s){
+    try{ return JSON.parse(s); }catch(e){}
+    var m = String(s).match(/\{[\s\S]*\}/);
+    if (m){ try{ return JSON.parse(m[0]); }catch(e){} }
+    return null;
+  }
+
+  /* ---------- translation ---------- */
+  function memoryBlock(){
+    var parts = [];
+    var ctx = memory.context.trim();
+    if (ctx) parts.push("Current situation, as described by Diego:\n" + ctx);
+    var rules = memory.rules.slice(-60).map(function(r){ return "- " + r.text; });
+    if (rules.length) parts.push("Diego's saved corrections and preferences. They override the general style rules above. Apply each one whenever it is relevant:\n" + rules.join("\n"));
+    return parts.join("\n\n");
+  }
   function buildMessage(t){
     var S = LANG[t.from], T = LANG[t.to];
-    var ctx = turns.filter(function(x){ return x !== t && !x.example && x.status === "done"; }).slice(-4)
-      .map(function(x){ return (x.from === "es" ? "Diego (Spanish): " : "Other person (Indonesian): ") + x.src; }).join("\n");
+    var hist = turns.filter(function(x){ return x !== t && !x.example && x.status === "done"; }).slice(-10)
+      .map(function(x){ return (x.from === "es" ? "Diego (Spanish): " : "Other person (Indonesian): ") + x.src + "\n  translated as: " + x.out; }).join("\n");
+    var mem = memoryBlock();
     return [
       "Translate the NEW MESSAGE from " + S.promptName + " into " + T.promptName + ".",
       "Rules:",
@@ -283,53 +417,41 @@ svg{flex:none}
       "- " + T.style,
       "- If the message is already written in " + T.promptName + ", return it unchanged.",
       "",
-      ctx ? "Recent conversation, for context only (do not translate it):\n" + ctx + "\n" : "",
+      mem ? mem + "\n" : "",
+      hist ? "Recent conversation, for context and consistent wording (do not translate it again):\n" + hist + "\n" : "",
       "NEW MESSAGE (" + S.promptName + "):",
       t.src
     ].join("\n");
   }
-  function tidy(s){
-    s = String(s || "").trim();
-    var m = s.match(/^["“«](.*)["”»]$/s);
-    return m ? m[1].trim() : s;
-  }
 
   function translate(t){
-    t.status = "pending"; t.error = null; t.out = "";
+    t.status = "pending"; t.error = null; t.out = ""; t.check = null; t.checkErr = null; t.fixed = false; t.learned = null;
     renderTurn(t); toEnd();
     if (!apiKey){ fail(t, "nokey"); openKey(); return; }
-    fetch("https://api.anthropic.com/v1/messages", {
-      method:"POST",
-      headers:{
-        "content-type":"application/json",
-        "x-api-key":apiKey,
-        "anthropic-version":"2023-06-01",
-        "anthropic-dangerous-direct-browser-access":"true"
-      },
-      body:JSON.stringify({
-        model:MODEL,
-        max_tokens:600,
-        system:"You are a live interpreter in a face-to-face conversation between Diego, a Colombian Spanish speaker, and a person who speaks Bahasa Indonesia. You translate one message at a time, in the exact direction you are told, and reply with the translation only.",
-        messages:[{ role:"user", content:buildMessage(t) }]
+    callClaude({ model:MODELS[quality], maxTokens:600, system:SYSTEM, prompt:buildMessage(t) })
+      .then(function(text){
+        text = tidy(text);
+        if (!text){ fail(t, "empty"); return; }
+        t.out = text; t.status = "done"; t.error = null;
+        renderTurn(t); save(); toEnd();
+        if (voiceOn) speak(t.out, t.to);
       })
-    }).then(function(res){
-      return res.json().catch(function(){ return null; }).then(function(data){ return { res:res, data:data }; });
-    }).then(function(r){
-      if (!r.res.ok){
-        var s = r.res.status;
-        fail(t, s === 401 ? "badkey" : (s === 403 || s === 402) ? "nocredit" : s === 429 ? "ratelimit" : (s === 529 || s >= 500) ? "busy" : "other");
-        if (s === 401) markKey(true);
-        return;
-      }
-      var text = ((r.data && r.data.content) || []).filter(function(b){ return b.type === "text"; }).map(function(b){ return b.text; }).join("");
-      text = tidy(text);
-      if (!text){ fail(t, "empty"); return; }
-      t.out = text; t.status = "done"; t.error = null;
-      renderTurn(t); save(); toEnd();
-      if (voiceOn) speak(t.out, t.to);
-    }).catch(function(){ fail(t, "offline"); });
+      .catch(function(e){ fail(t, codeOf(e)); });
   }
   function fail(t, code){ t.status = "error"; t.error = code; renderTurn(t); save(); toEnd(); }
+
+  // Literal Spanish reading of a Bahasa translation, so Diego can check it.
+  function checkTurn(t){
+    t.checking = true; t.check = null; t.checkErr = null;
+    renderTurn(t);
+    callClaude({
+      model:MODELS.fast, maxTokens:400,
+      system:"You help a Spanish speaker check what an Indonesian sentence says.",
+      prompt:"Translate this Indonesian sentence into Spanish as literally as possible while keeping it readable, so a Spanish speaker can verify exactly what it says, including its tone (formal or casual). Output only the Spanish.\n\n" + t.out
+    }).then(function(text){ t.check = tidy(text); })
+      .catch(function(e){ t.checkErr = ERR[codeOf(e)]; })
+      .then(function(){ t.checking = false; renderTurn(t); save(); });
+  }
 
   /* ---------- speech out ---------- */
   var voices = [];
@@ -381,7 +503,6 @@ svg{flex:none}
       var same = recFrom === from;
       try{ rec.stop(); }catch(e){}
       if (same) return;
-      // switching sides: let the old session end, then start the new one
       setTimeout(function(){ listen(from); }, 250);
       return;
     }
@@ -448,6 +569,7 @@ svg{flex:none}
   /* ---------- rendering ---------- */
   function el(tag, cls, text){ var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
   function actBtn(icon, label, fn){ var b = el("button", "act"); b.type = "button"; b.innerHTML = icon; b.appendChild(document.createTextNode(label)); b.addEventListener("click", fn); return b; }
+  function labeled(cls, label, text, lang){ var p = el("p", cls); p.appendChild(el("b", null, label)); var s = el("span", null, text); if (lang) s.lang = lang; p.appendChild(s); return p; }
 
   function turnNode(t){
     var a = el("article", "turn turn-" + t.from + (t.status === "pending" ? " pending" : "") + (t.status === "live" ? " live" : ""));
@@ -455,17 +577,24 @@ svg{flex:none}
     var meta = el("div", "meta");
     meta.appendChild(el("span", null, LANG[t.from].code + " → " + LANG[t.to].code));
     if (t.example) meta.appendChild(el("span", "tag", "Ejemplo"));
+    if (t.fixed) meta.appendChild(el("span", "tag tag-fix", "Corregida"));
     a.appendChild(meta);
     var src = el("p", "src", t.src || (t.status === "live" ? listeningText(t.from) : "")); src.lang = t.from; a.appendChild(src);
     if (t.status === "live") return a;
     var outText = t.out || (t.status === "pending" ? "Traduciendo…" : "");
     if (outText){ var out = el("p", "out", outText); out.lang = t.out ? t.to : "es"; a.appendChild(out); }
+    if (t.checking) a.appendChild(labeled("check", "Dice", "Revisando…"));
+    else if (t.check) a.appendChild(labeled("check", "Dice", t.check, "es"));
+    else if (t.checkErr) a.appendChild(el("p", "err", t.checkErr));
+    if (t.learned) a.appendChild(labeled("learned", "Aprendido", t.learned));
     if (t.status === "error") a.appendChild(el("p", "err", ERR[t.error] || ERR.other));
     if (t.status !== "pending"){
       var acts = el("div", "acts");
       if (t.status === "done"){
         if (canSpeak) acts.appendChild(actBtn(ICON.speaker, "Escuchar", function(){ speak(t.out, t.to); }));
         acts.appendChild(actBtn(ICON.expand, "Mostrar", function(){ openStage(t); }));
+        if (t.to === "id" && !t.check && !t.checking) acts.appendChild(actBtn(ICON.eye, "¿Qué dice?", function(){ checkTurn(t); }));
+        if (!t.example) acts.appendChild(actBtn(ICON.pencil, "Corregir", function(){ openFix(t); }));
       }
       if (t.status === "error" && RETRY[t.error]) acts.appendChild(actBtn(ICON.retry, "Reintentar", function(){ translate(t); }));
       if (acts.childNodes.length) a.appendChild(acts);
@@ -474,10 +603,7 @@ svg{flex:none}
   }
   function render(){
     log.textContent = "";
-    if (notice){
-      var n = el("div", "notice", notice);
-      log.appendChild(n);
-    }
+    if (notice) log.appendChild(el("div", "notice", notice));
     turns.forEach(function(t){ log.appendChild(turnNode(t)); });
   }
   function renderTurn(t){
@@ -489,7 +615,6 @@ svg{flex:none}
   function dropExamples(){
     if (turns.some(function(t){ return t.example; })){ turns = turns.filter(function(t){ return !t.example; }); render(); }
   }
-  var uid = function(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
 
   /* ---------- typing fallback ---------- */
   var lanes = $("#lanes"), typeBtn = $("#typeBtn"), inEs = $("#inEs"), inId = $("#inId");
@@ -537,8 +662,8 @@ svg{flex:none}
   function resetClear(){ clearTimeout(clearTimer); clearTimer = null; clearBtn.classList.remove("confirm"); clearLabel.textContent = "Nueva"; }
 
   /* ---------- API key sheet ---------- */
-  var keySheet = $("#keySheet"), keyInput = $("#apiKey"), keyBtn = $("#keyBtn");
-  function markKey(bad){ keyBtn.classList.toggle("warn", !!bad || !apiKey); }
+  var keySheet = $("#keySheet"), keyInput = $("#apiKey"), memBtn = $("#memBtn");
+  function markKey(bad){ memBtn.classList.toggle("warn", !!bad || !apiKey); }
   function openKey(){
     keyInput.value = apiKey;
     $("#keyForget").hidden = !apiKey;
@@ -546,7 +671,6 @@ svg{flex:none}
     setTimeout(function(){ keyInput.focus(); }, 50);
   }
   function closeKey(){ keySheet.hidden = true; }
-  keyBtn.addEventListener("click", openKey);
   $("#keyCancel").addEventListener("click", closeKey);
   keySheet.addEventListener("click", function(e){ if (e.target === keySheet) closeKey(); });
   $("#keyForm").addEventListener("submit", function(e){
@@ -554,10 +678,122 @@ svg{flex:none}
     var v = keyInput.value.trim();
     if (!v){ keyInput.focus(); return; }
     apiKey = v; store("hb-key", v); markKey(false); closeKey();
-    if (notice && notice.indexOf("clave") !== -1){ notice = null; render(); }
   });
   $("#keyForget").addEventListener("click", function(){
     apiKey = ""; forget("hb-key"); keyInput.value = ""; markKey(false); closeKey();
+  });
+
+  /* ---------- memory sheet ---------- */
+  var memSheet = $("#memSheet"), memContext = $("#memContext"), ruleList = $("#ruleList"), ruleInput = $("#ruleInput");
+  function addRule(text){
+    text = String(text || "").trim();
+    if (!text) return;
+    memory.rules.push({ id: uid(), text: text, at: Date.now() });
+    if (memory.rules.length > 80) memory.rules = memory.rules.slice(-80);
+    saveMemory();
+  }
+  function renderRules(){
+    ruleList.textContent = "";
+    memory.rules.slice().reverse().forEach(function(r){
+      var li = el("li");
+      li.appendChild(el("span", null, r.text));
+      var d = el("button", "del"); d.type = "button"; d.innerHTML = ICON.x; d.setAttribute("aria-label", "Olvidar: " + r.text);
+      d.addEventListener("click", function(){ memory.rules = memory.rules.filter(function(x){ return x.id !== r.id; }); saveMemory(); renderRules(); });
+      li.appendChild(d);
+      ruleList.appendChild(li);
+    });
+    $("#ruleEmpty").hidden = memory.rules.length > 0;
+    $("#ruleCount").textContent = memory.rules.length ? "(" + memory.rules.length + ")" : "";
+  }
+  function paintQuality(){
+    Array.prototype.forEach.call(document.querySelectorAll(".seg button"), function(b){ b.setAttribute("aria-checked", String(b.dataset.q === quality)); });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll(".seg button"), function(b){
+    b.addEventListener("click", function(){ quality = b.dataset.q; store("hb-quality", quality); paintQuality(); });
+  });
+  memContext.addEventListener("input", function(){ memory.context = memContext.value; saveMemory(); });
+  $("#ruleForm").addEventListener("submit", function(e){ e.preventDefault(); addRule(ruleInput.value); ruleInput.value = ""; renderRules(); });
+  function openMem(){ memContext.value = memory.context; renderRules(); paintQuality(); memSheet.hidden = false; }
+  function closeMem(){ memSheet.hidden = true; }
+  memBtn.addEventListener("click", openMem);
+  $("#memClose").addEventListener("click", closeMem);
+  $("#openKeyBtn").addEventListener("click", function(){ closeMem(); openKey(); });
+  memSheet.addEventListener("click", function(e){ if (e.target === memSheet) closeMem(); });
+
+  /* ---------- corrections ---------- */
+  var fixSheet = $("#fixSheet"), fixText = $("#fixText"), fixErr = $("#fixErr"), fixSave = $("#fixSave"), fixMic = $("#fixMic");
+  var fixTurn = null, fixRec = null;
+  fixMic.hidden = !SR;
+  function openFix(t){
+    fixTurn = t;
+    var s = $("#fixSrc"), o = $("#fixOut");
+    s.textContent = t.src; s.lang = t.from;
+    o.textContent = t.out; o.lang = t.to;
+    fixText.value = ""; fixErr.hidden = true;
+    fixSave.disabled = false; fixSave.textContent = "Corregir y aprender";
+    fixSheet.hidden = false;
+    setTimeout(function(){ fixText.focus(); }, 50);
+  }
+  function stopFixMic(){ if (fixRec){ try{ fixRec.stop(); }catch(e){} } }
+  function closeFix(){ stopFixMic(); fixSheet.hidden = true; fixTurn = null; }
+  $("#fixCancel").addEventListener("click", closeFix);
+  fixSheet.addEventListener("click", function(e){ if (e.target === fixSheet) closeFix(); });
+  fixMic.addEventListener("click", function(){
+    if (!SR) return;
+    if (fixRec){ stopFixMic(); return; }
+    if (rec){ try{ rec.stop(); }catch(e){} }
+    hushSpeech();
+    var r = new SR(); r.lang = "es-CO"; r.interimResults = false; r.continuous = false;
+    var base = fixText.value.trim();
+    r.onresult = function(e){
+      var s = "";
+      for (var i = 0; i < e.results.length; i++){ if (e.results[i].isFinal) s += e.results[i][0].transcript; }
+      if (s) fixText.value = (base ? base + " " : "") + s.trim();
+    };
+    r.onerror = function(){};
+    r.onend = function(){ fixRec = null; fixMic.classList.remove("on"); };
+    try{ r.start(); fixRec = r; fixMic.classList.add("on"); }catch(e){}
+  });
+  $("#fixForm").addEventListener("submit", function(e){
+    e.preventDefault();
+    var t = fixTurn, note = fixText.value.trim();
+    if (!t) return;
+    if (!note){ fixText.focus(); return; }
+    stopFixMic();
+    fixSave.disabled = true; fixSave.textContent = "Aprendiendo…"; fixErr.hidden = true;
+    var S = LANG[t.from], T = LANG[t.to];
+    var saved = memory.rules.slice(-60).map(function(r){ return "- " + r.text; }).join("\n");
+    var prompt = [
+      "Diego uses a live Spanish ⇄ Indonesian interpreter and is correcting one of its translations.",
+      "",
+      "Source (" + S.promptName + "): " + t.src,
+      "Translation it gave (" + T.promptName + "): " + t.out,
+      "Diego's correction (may be in Spanish or English, may come from dictation): " + note,
+      memory.context.trim() ? "Current situation: " + memory.context.trim() : "",
+      "",
+      saved ? "Rules already saved (do not repeat them):\n" + saved + "\n" : "",
+      "Reply with only a JSON object with two string fields:",
+      "\"corrected\": the corrected " + T.promptName + " translation of the source, applying Diego's correction.",
+      "\"rule\": one short, reusable instruction written in Spanish for all future translations, quoting Indonesian words exactly (for example: Con gente joven usa \"kamu\" en vez de \"Anda\"). Use an empty string if the correction only applies to this sentence or a saved rule already covers it.",
+      "Example: {\"corrected\": \"...\", \"rule\": \"...\"}"
+    ].join("\n");
+    callClaude({ model:MODELS.precise, maxTokens:700, system:"You improve a live interpreter from its user's corrections. Reply with JSON only.", prompt:prompt })
+      .then(function(text){
+        var data = parseJson(text);
+        var corrected = data && typeof data.corrected === "string" ? tidy(data.corrected) : "";
+        var rule = data && typeof data.rule === "string" ? data.rule.trim() : "";
+        if (!corrected) throw "empty";
+        t.out = corrected; t.fixed = true; t.check = null; t.checkErr = null;
+        t.learned = rule || null;
+        if (rule) addRule(rule);
+        save(); renderTurn(t); closeFix();
+        if (voiceOn) speak(t.out, t.to);
+      })
+      .catch(function(e){
+        fixErr.textContent = ERR[codeOf(e)].replace("Toca Reintentar.", "Inténtalo de nuevo.");
+        fixErr.hidden = false;
+        fixSave.disabled = false; fixSave.textContent = "Corregir y aprender";
+      });
   });
 
   /* ---------- stage ---------- */
@@ -581,14 +817,16 @@ svg{flex:none}
   $("#stageClose").addEventListener("click", closeStage);
   document.addEventListener("keydown", function(e){
     if (e.key !== "Escape") return;
-    if (!stage.hidden) closeStage(); else if (!keySheet.hidden) closeKey();
+    if (!stage.hidden) closeStage();
+    else if (!fixSheet.hidden) closeFix();
+    else if (!keySheet.hidden) closeKey();
+    else if (!memSheet.hidden) closeMem();
   });
 
   /* ---------- keep the screen on during a conversation ---------- */
-  var lock = null;
   function wake(){
     if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
-    navigator.wakeLock.request("screen").then(function(l){ lock = l; }).catch(function(){});
+    navigator.wakeLock.request("screen").catch(function(){});
   }
   document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible") wake(); });
   document.addEventListener("click", function once(){ wake(); document.removeEventListener("click", once); });
