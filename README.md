@@ -9,4 +9,12 @@ Intérprete por voz español ⇄ bahasa Indonesia para conversaciones cara a car
 - Calidad Rápida o Precisa (modelo más fuerte) en Memoria.
 - La clave de API y la memoria se guardan solo en el navegador del teléfono (localStorage); no están en este repositorio.
 
+- Bahasa coloquial (bahasa sehari-hari), no formal.
+- Tolera pausas cortas al hablar: espera el silencio elegido en Memoria (1 s, 1,8 s o 2,8 s) antes de traducir. Tocar el botón otra vez traduce al instante.
+
+## Modo escucha
+
+`escuchar.html`: solo escucha. Transcribe el bahasa con Deepgram (nova-3, separación de voces), lo traduce al español con Claude y lo lee en los audífonos diciendo quién habla. Necesita una clave de Deepgram, guardada solo en el teléfono.
+
 Página: https://dlizcanog.github.io/habla-bicara/
+Modo escucha: https://dlizcanog.github.io/habla-bicara/escuchar.html

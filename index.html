@@ -100,7 +100,7 @@ svg{flex:none}
   .turn.pending .out{animation:breathe 1.2s ease-in-out infinite}
   @keyframes breathe{50%{opacity:.45}}
 }
-.typebar{display:flex;justify-content:center}
+.typebar{display:flex;justify-content:center;flex-wrap:wrap;gap:4px 18px}
 .linkbtn{background:none;border:0;padding:6px 4px;color:var(--muted);font:700 13px var(--font-body);text-decoration:underline;text-underline-offset:3px}
 
 .lanes{display:grid;gap:8px}
@@ -154,6 +154,8 @@ svg{flex:none}
 .addrule .secondary{flex:none;padding:0 16px}
 .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border-radius:14px;padding:4px;gap:4px}
 .seg button{min-height:42px;border:0;border-radius:10px;background:transparent;color:var(--muted);font:700 15px var(--font-display)}
+.seg-3{grid-template-columns:repeat(3,1fr)}
+.seg-3 button{font-size:13px;padding:0 4px}
 .seg button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.14)}
 .fixref{background:var(--bg);border-radius:12px;padding:10px 12px;display:grid;gap:2px}
 .fixref .out{font-size:17px}
@@ -191,7 +193,7 @@ svg{flex:none}
         <span><span class="lang">Español</span><br><span class="how" id="howEs">Toca para hablar</span></span>
       </button>
     </div>
-    <div class="typebar"><button id="typeBtn" class="linkbtn" type="button" aria-expanded="false">Escribir en vez de hablar</button></div>
+    <div class="typebar"><button id="typeBtn" class="linkbtn" type="button" aria-expanded="false">Escribir en vez de hablar</button><a class="linkbtn" href="escuchar.html">Modo escucha</a></div>
     <div id="lanes" class="lanes" hidden>
       <form class="lane lane-id" id="formId" autocomplete="off">
         <span class="code" aria-hidden="true">ID</span>
@@ -258,6 +260,13 @@ svg{flex:none}
       <button type="button" role="radio" data-q="precise" aria-checked="false">Precisa</button>
     </div>
     <p class="small">Rápida responde en uno o dos segundos. Precisa usa un modelo más fuerte: el bahasa sale más natural, pero tarda un poco más y cuesta más por frase.</p>
+    <h3>Pausa antes de traducir</h3>
+    <div class="seg seg-3" role="radiogroup" aria-label="Pausa antes de traducir">
+      <button type="button" role="radio" data-p="short" aria-checked="false">Corta · 1 s</button>
+      <button type="button" role="radio" data-p="normal" aria-checked="true">Normal · 1,8 s</button>
+      <button type="button" role="radio" data-p="long" aria-checked="false">Larga · 2,8 s</button>
+    </div>
+    <p class="small">Cuánto silencio espera antes de cerrar la frase y traducirla. Si la otra persona hace pausas al hablar, usa Normal o Larga. Para traducir al instante, toca el botón otra vez.</p>
     <div class="row">
       <button class="secondary" type="button" id="openKeyBtn">Cambiar clave</button>
       <button class="primary" type="button" id="memClose">Listo</button>
@@ -293,10 +302,10 @@ svg{flex:none}
   var SYSTEM = "You are a live interpreter in a face-to-face conversation between Diego, a Colombian Spanish speaker, and a person who speaks Bahasa Indonesia. You translate one message at a time, in the exact direction you are told, and reply with the translation only.";
   var LANG = {
     es: { code:"ES", name:"Español", promptName:"Spanish", rec:"es-CO",
-          style:"Write natural Latin American Spanish as spoken in Colombia.",
+          style:"Write natural, casual Colombian Spanish, the way people actually talk.",
           tts:["es-co","es-us","es-419","es-mx","es-es"], prefix:["es"] },
     id: { code:"ID", name:"Bahasa Indonesia", promptName:"Indonesian (Bahasa Indonesia)", rec:"id-ID",
-          style:"Write natural, polite everyday Indonesian; address the listener as \"Anda\" unless the message is clearly casual.",
+          style:"Write casual, everyday spoken Indonesian (bahasa sehari-hari), the way people really talk in shops, on the street and with friends: short sentences and informal words such as nggak, udah, aja, gimana, kenapa, mau, bisa, banget, dong, ya. Address the listener with kamu, with Mas, Mbak, Kak, Pak or Bu, or drop the pronoun; use saya with strangers and aku only with friends. Avoid formal written Indonesian (Anda, tidak, sudah, bagaimana, apakah, mohon, ingin) unless Diego's saved rules ask for it. Stay friendly and respectful, never rude or heavy on slang.",
           tts:["id-id","in-id"], prefix:["id","in"] }
   };
   var EXAMPLES = [
@@ -480,87 +489,138 @@ svg{flex:none}
   }
   function hushSpeech(){ if (canSpeak) try{ window.speechSynthesis.cancel(); }catch(e){} }
 
-  /* ---------- speech in ---------- */
-  var rec = null, recFrom = null, liveTurn = null;
+  /* ---------- speech in ----------
+     The browser ends recognition at any short pause. A listening session keeps
+     restarting it and only closes after the chosen pause of real silence,
+     so people can stop for a moment mid-sentence. Tapping the button again
+     closes the session at once. */
+  var PAUSES = { short:1000, normal:1800, long:2800 };
+  var pauseKey = PAUSES[recall("hb-pause")] ? recall("hb-pause") : "normal";
+  var session = null;
   var MIC = { es: $("#micEs"), id: $("#micId") };
   var HOW = {
-    es: { idle:"Toca para hablar", on:"Te escucho… toca para terminar" },
+    es: { idle:"Toca para hablar", on:"Te escucho… toca para traducir ya" },
     id: { idle:"Tekan untuk bicara", on:"Mendengarkan… tekan untuk selesai" }
   };
   function paintMics(){
     ["es","id"].forEach(function(l){
-      var on = recFrom === l;
+      var on = !!session && session.from === l;
       MIC[l].classList.toggle("on", on);
       MIC[l].setAttribute("aria-pressed", String(on));
       $(l === "es" ? "#howEs" : "#howId").textContent = on ? HOW[l].on : HOW[l].idle;
       MIC[l].disabled = !SR;
     });
   }
+  // Joins recognition pieces. Chrome on Android repeats earlier words in each new
+  // result, so a piece that starts with everything so far replaces it.
+  function mergeParts(list){
+    var acc = "";
+    list.forEach(function(p){
+      p = String(p || "").trim();
+      if (!p) return;
+      if (!acc){ acc = p; return; }
+      var a = acc.toLowerCase(), b = p.toLowerCase();
+      if (b.indexOf(a) === 0) acc = p;
+      else if (b.length > 8 && a.indexOf(b) !== -1) return;
+      else acc += " " + p;
+    });
+    return acc;
+  }
+  function sessionText(s){ return mergeParts([s.committed, s.cur, s.interim]); }
 
   function listen(from){
     if (!SR){ return; }
-    if (rec){
-      var same = recFrom === from;
-      try{ rec.stop(); }catch(e){}
-      if (same) return;
-      setTimeout(function(){ listen(from); }, 250);
+    if (session){
+      var same = session.from === from;
+      finishSession();
+      if (!same) setTimeout(function(){ listen(from); }, 350);
       return;
     }
     hushSpeech();
     dropExamples();
+    var t = { id: uid(), from: from, to: from === "es" ? "id" : "es", src: "", out: "", status: "live" };
+    turns.push(t);
+    renderTurn(t); toEnd();
+    session = { from: from, turn: t, committed: "", cur: "", interim: "", heard: false, active: false, finishing: false, fatal: false, timer: null, started: Date.now(), rec: null };
+    startRec(session);
+    paintMics();
+  }
+  function startRec(s){
     var r = new SR();
-    r.lang = LANG[from].rec;
+    r.lang = LANG[s.from].rec;
     r.interimResults = true;
-    r.continuous = false;
+    r.continuous = true;
     r.maxAlternatives = 1;
-    var finalText = "", interimText = "";
-    liveTurn = { id: uid(), from: from, to: from === "es" ? "id" : "es", src: "", out: "", status: "live" };
-    turns.push(liveTurn);
-    renderTurn(liveTurn); toEnd();
-
+    s.rec = r; s.cur = ""; s.interim = "";
     r.onresult = function(e){
-      finalText = ""; interimText = "";
+      if (session !== s || s.rec !== r) return;
+      var finals = [], interim = "";
       for (var i = 0; i < e.results.length; i++){
         var res = e.results[i];
-        if (res.isFinal) finalText += res[0].transcript; else interimText += res[0].transcript;
+        if (res.isFinal) finals.push(res[0].transcript); else interim += res[0].transcript;
       }
-      var shown = (finalText + " " + interimText).trim();
-      if (liveTurn){ liveTurn.src = shown; var n = log.querySelector('[data-id="' + liveTurn.id + '"] .src'); if (n) n.textContent = shown || listeningText(from); }
+      s.cur = mergeParts(finals);
+      s.interim = interim.trim();
+      s.heard = true;
+      var shown = sessionText(s);
+      s.turn.src = shown;
+      var n = log.querySelector('[data-id="' + s.turn.id + '"] .src');
+      if (n) n.textContent = shown || listeningText(s.from);
+      armSilence(s);
     };
     r.onerror = function(e){
       var code = e && e.error;
       if (code === "not-allowed" || code === "service-not-allowed"){
+        s.fatal = true;
         setNotice("Chrome no tiene permiso para el micrófono. Toca el candado junto a la dirección › Permisos › Micrófono › Permitir.");
       } else if (code === "network"){
+        s.fatal = true;
         setNotice("El reconocimiento de voz necesita internet. Revisa los datos e inténtalo de nuevo.");
       } else if (code === "language-not-supported"){
-        setNotice("Este teléfono no reconoce " + LANG[from].name + " por voz. Usa “Escribir en vez de hablar”.");
+        s.fatal = true;
+        setNotice("Este teléfono no reconoce " + LANG[s.from].name + " por voz. Usa “Escribir en vez de hablar”.");
       }
     };
     r.onend = function(){
-      var text = (finalText || interimText).trim();
-      var t = liveTurn;
-      rec = null; recFrom = null; liveTurn = null;
-      paintMics();
-      if (!t) return;
-      if (!text){
-        turns = turns.filter(function(x){ return x !== t; });
-        var n = log.querySelector('[data-id="' + t.id + '"]'); if (n) n.remove();
-        return;
-      }
-      t.src = text;
-      translate(t);
+      if (s.rec !== r) return;
+      s.active = false;
+      s.committed = sessionText(s); s.cur = ""; s.interim = "";
+      if (session !== s) return;
+      if (s.finishing || s.fatal){ completeSession(s); return; }
+      if (!s.heard && Date.now() - s.started > 8000){ completeSession(s); return; }
+      // The browser stopped at a short pause: keep listening.
+      setTimeout(function(){ if (session === s && !s.finishing) startRec(s); }, 120);
     };
-
-    try{
-      r.start();
-      rec = r; recFrom = from;
-      paintMics();
-    }catch(e){
-      turns = turns.filter(function(x){ return x !== liveTurn; });
-      liveTurn = null; render();
-      setNotice("No se pudo abrir el micrófono. Inténtalo otra vez.");
+    try{ r.start(); s.active = true; }
+    catch(e){ s.fatal = true; completeSession(s); }
+  }
+  function armSilence(s){
+    clearTimeout(s.timer);
+    s.timer = setTimeout(function(){ if (session === s) finishSession(); }, PAUSES[pauseKey]);
+  }
+  function finishSession(){
+    var s = session;
+    if (!s || s.finishing) return;
+    s.finishing = true;
+    clearTimeout(s.timer);
+    if (!s.active){ completeSession(s); return; }
+    try{ s.rec.stop(); }catch(e){ completeSession(s); return; }
+    setTimeout(function(){ if (session === s) completeSession(s); }, 1500);
+  }
+  function completeSession(s){
+    if (session !== s) return;
+    clearTimeout(s.timer);
+    var text = sessionText(s);
+    session = null;
+    paintMics();
+    var t = s.turn;
+    if (!text){
+      turns = turns.filter(function(x){ return x !== t; });
+      var n = log.querySelector('[data-id="' + t.id + '"]'); if (n) n.remove();
+      return;
     }
+    t.src = text;
+    translate(t);
   }
   MIC.es.addEventListener("click", function(){ listen("es"); });
   MIC.id.addEventListener("click", function(){ listen("id"); });
@@ -706,10 +766,14 @@ svg{flex:none}
     $("#ruleCount").textContent = memory.rules.length ? "(" + memory.rules.length + ")" : "";
   }
   function paintQuality(){
-    Array.prototype.forEach.call(document.querySelectorAll(".seg button"), function(b){ b.setAttribute("aria-checked", String(b.dataset.q === quality)); });
+    Array.prototype.forEach.call(document.querySelectorAll(".seg button[data-q]"), function(b){ b.setAttribute("aria-checked", String(b.dataset.q === quality)); });
+    Array.prototype.forEach.call(document.querySelectorAll(".seg button[data-p]"), function(b){ b.setAttribute("aria-checked", String(b.dataset.p === pauseKey)); });
   }
-  Array.prototype.forEach.call(document.querySelectorAll(".seg button"), function(b){
+  Array.prototype.forEach.call(document.querySelectorAll(".seg button[data-q]"), function(b){
     b.addEventListener("click", function(){ quality = b.dataset.q; store("hb-quality", quality); paintQuality(); });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".seg button[data-p]"), function(b){
+    b.addEventListener("click", function(){ pauseKey = b.dataset.p; store("hb-pause", pauseKey); paintQuality(); });
   });
   memContext.addEventListener("input", function(){ memory.context = memContext.value; saveMemory(); });
   $("#ruleForm").addEventListener("submit", function(e){ e.preventDefault(); addRule(ruleInput.value); ruleInput.value = ""; renderRules(); });
@@ -741,7 +805,7 @@ svg{flex:none}
   fixMic.addEventListener("click", function(){
     if (!SR) return;
     if (fixRec){ stopFixMic(); return; }
-    if (rec){ try{ rec.stop(); }catch(e){} }
+    if (session) finishSession();
     hushSpeech();
     var r = new SR(); r.lang = "es-CO"; r.interimResults = false; r.continuous = false;
     var base = fixText.value.trim();
