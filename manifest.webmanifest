@@ -1,0 +1,14 @@
+{
+  "name": "Habla · Bicara",
+  "short_name": "Habla Bicara",
+  "description": "Intérprete por voz español ⇄ bahasa Indonesia",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F1F2F6",
+  "theme_color": "#E3A015",
+  "lang": "es",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

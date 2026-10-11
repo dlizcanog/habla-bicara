@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#F1F2F6"/>
+  <path d="M96 128h248a56 56 0 0 1 56 56v72a56 56 0 0 1-56 56H200l-72 56v-56h-32a56 56 0 0 1-56-56v-72a56 56 0 0 1 56-56z" fill="#E3A015"/>
+  <path d="M416 232H200a48 48 0 0 0-48 48v64a48 48 0 0 0 48 48h128l64 48v-48h24a48 48 0 0 0 48-48v-64a48 48 0 0 0-48-48z" fill="#C4262E"/>
+  <text x="140" y="238" font-family="Arial, sans-serif" font-weight="800" font-size="76" fill="#2A1E00">ES</text>
+  <text x="250" y="352" font-family="Arial, sans-serif" font-weight="800" font-size="76" fill="#FFFFFF">ID</text>
+</svg>
