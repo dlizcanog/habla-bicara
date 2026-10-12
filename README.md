@@ -14,7 +14,7 @@ Intérprete por voz español ⇄ bahasa Indonesia para conversaciones cara a car
 
 ## Modo escucha
 
-`escuchar.html`: solo escucha. Transcribe el bahasa con Deepgram (nova-3, separación de voces), lo traduce al español con Claude y lo lee en los audífonos diciendo quién habla. Necesita una clave de Deepgram, guardada solo en el teléfono.
+`escuchar.html`: solo escucha. Por defecto usa el mismo reconocimiento de voz de Chrome que la conversación (bahasa, escucha continua) y Claude traduce cada frase al español y estima quién habla por el contexto; el nombre de cada frase se puede corregir. Opcional en Ajustes: Deepgram (nova-3), que separa las voces por el sonido pero reconoce peor el bahasa y necesita su propia clave.
 
 Página: https://dlizcanog.github.io/habla-bicara/
 Modo escucha: https://dlizcanog.github.io/habla-bicara/escuchar.html
