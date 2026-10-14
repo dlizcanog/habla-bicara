@@ -18,3 +18,9 @@ Intérprete por voz español ⇄ bahasa Indonesia para conversaciones cara a car
 
 Página: https://dlizcanog.github.io/habla-bicara/
 Modo escucha: https://dlizcanog.github.io/habla-bicara/escuchar.html
+
+## Prototipo Ida y Vuelta
+
+`viajero/`: prototipo aparte de traductor cara a cara para viajeros. Pantalla partida (la mitad de la otra persona va girada hacia ella), un botón por persona con idioma fijo, tu idioma sale del teléfono y el de la otra persona de la zona horaria. Sin títulos ni configuraciones. No toca la app principal.
+
+Prototipo: https://dlizcanog.github.io/habla-bicara/viajero/

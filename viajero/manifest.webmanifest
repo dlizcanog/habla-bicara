@@ -1,0 +1,14 @@
+{
+  "name": "Ida y Vuelta",
+  "short_name": "Ida y Vuelta",
+  "description": "Prototipo: traductor cara a cara para viajeros",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F3F4F2",
+  "theme_color": "#0F6B73",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

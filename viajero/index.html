@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#0F6B73">
+<meta name="description" content="Prototipo: traductor cara a cara para viajeros. Un botón por persona, idioma fijo, sin configuraciones.">
+<title>Ida y Vuelta</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+/* Layout: the phone lies between two people. The screen splits in two halves; the far half is turned 180° to face the other person. Each half: language chip, what the other said (big), own words (small), one big button. Teal = the other person, coral = me. System fonts so every script renders. */
+:root{
+  --bg:#F3F4F2;
+  --ink:#16191A;
+  --muted:#5D6466;
+  --line:rgba(22,25,26,.12);
+  --me:#D9512C;
+  --me-ink:#FFFFFF;
+  --me-soft:#FBEAE3;
+  --them:#0F6B73;
+  --them-ink:#FFFFFF;
+  --them-soft:#E1F0EF;
+  --sheet:#FFFFFF;
+  --focus:#2B49C6;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Noto Sans Thai","Noto Sans JP","Noto Sans SC","Noto Sans Devanagari","Noto Sans Arabic",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#101314;--ink:#EEF1F1;--muted:#9AA3A5;--line:rgba(238,241,241,.12);
+    --me:#E8693F;--me-ink:#1B0C06;--me-soft:#2A1914;
+    --them:#2BA3AC;--them-ink:#041416;--them-soft:#0F2426;
+    --sheet:#1A1E1F;--focus:#90A2FF;
+    color-scheme:dark;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);-webkit-text-size-adjust:100%;overflow:hidden;overscroll-behavior:none}
+button{font-family:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+.stage{height:100%;display:grid;grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
+.half{--c:var(--me);--c-ink:var(--me-ink);--soft:var(--me-soft);
+  position:relative;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;
+  background:var(--soft);padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px))}
+.half.them{--c:var(--them);--c-ink:var(--them-ink);--soft:var(--them-soft);transform:rotate(180deg);
+  padding-bottom:calc(14px + env(safe-area-inset-top,0px))}
+.half.me{border-top:1px solid var(--line)}
+
+.chip{justify-self:start;display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px 0 6px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);font-size:15px;font-weight:600}
+.chip .code{background:var(--c);color:var(--c-ink);border-radius:999px;padding:3px 7px;font-size:12px;font-weight:800;letter-spacing:.06em}
+
+.read{min-height:0;display:flex;flex-direction:column;justify-content:center;gap:8px;overflow:hidden}
+.big{margin:0;font-size:clamp(26px,7.4vw,46px);line-height:1.18;font-weight:700;overflow-y:auto;overflow-wrap:anywhere;text-wrap:balance}
+.big.hello{color:var(--c);font-weight:800}
+.big.wait{color:var(--muted)}
+.own{margin:0;font-size:15px;line-height:1.35;color:var(--muted);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.own.live{color:var(--ink);font-size:18px}
+.err{margin:0;font-size:14px;font-weight:600;color:var(--ink)}
+.again{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 10px;border-radius:999px;border:0;background:rgba(127,127,127,.12);color:var(--ink);font-size:14px;font-weight:600}
+
+.talk{width:100%;min-height:76px;border:0;border-radius:24px;background:var(--c);color:var(--c-ink);display:flex;align-items:center;justify-content:center;gap:12px;font-size:20px;font-weight:700;padding:0 18px}
+.talk svg{flex:none}
+.talk.on{box-shadow:0 0 0 4px var(--soft),0 0 0 8px var(--c)}
+.talk:disabled{opacity:.45}
+@media (prefers-reduced-motion: no-preference){
+  .talk.on{animation:ring 1.3s ease-in-out infinite}
+  @keyframes ring{50%{box-shadow:0 0 0 4px var(--soft),0 0 0 13px var(--c)}}
+  .big.wait{animation:breathe 1.1s ease-in-out infinite}
+  @keyframes breathe{50%{opacity:.4}}
+}
+
+/* Language picker lives inside its half, so it faces the right person. */
+.pick{position:absolute;inset:0;z-index:5;background:var(--soft);display:grid;grid-template-rows:auto minmax(0,1fr);gap:10px;padding:12px 16px 16px}
+.pick .close{justify-self:end;min-width:44px;min-height:44px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);display:inline-flex;align-items:center;justify-content:center}
+.langs{overflow-y:auto;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-content:start}
+.langs button{min-height:52px;border-radius:14px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:17px;font-weight:600;text-align:left;padding:0 14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.langs button[aria-pressed="true"]{background:var(--c);color:var(--c-ink);border-color:var(--c)}
+
+.keysheet{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.45);display:flex;align-items:flex-end}
+.keysheet form{width:100%;background:var(--sheet);border-radius:20px 20px 0 0;padding:20px 20px calc(20px + env(safe-area-inset-bottom,0px));display:grid;gap:12px}
+.keysheet h2{margin:0;font-size:20px}
+.keysheet p{margin:0;font-size:15px;color:var(--muted)}
+.keysheet input{width:100%;font-size:16px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.keysheet button{min-height:48px;border-radius:14px;border:0;background:var(--ink);color:var(--sheet);font-size:16px;font-weight:700}
+</style>
+</head>
+<body>
+<main class="stage">
+  <section class="half them" id="halfThem" aria-label="Otra persona"></section>
+  <section class="half me" id="halfMe" aria-label="Tú"></section>
+</main>
+
+<div class="keysheet" id="keySheet" hidden>
+  <form id="keyForm" autocomplete="off">
+    <h2>Prototipo: falta la clave</h2>
+    <p>Pega tu clave de Claude (la misma de Habla · Bicara). Se guarda solo en este teléfono.</p>
+    <input id="keyInput" type="password" placeholder="sk-ant-…" spellcheck="false" autocapitalize="off">
+    <button type="submit">Guardar</button>
+  </form>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var MODEL = "claude-haiku-5-5";
+  var PAUSE = 1500, SPEC_DELAY = 450;
+
+  /* Languages: name in their own script, recognition code, voice codes, button words. */
+  var L = {
+    es:{ name:"Español", en:"Spanish", rec:"es-ES", tts:["es"], idle:"Toca y habla", on:"Te escucho… toca al terminar",
+         style:"Natural, casual Spanish as people actually talk." },
+    en:{ name:"English", en:"English", rec:"en-US", tts:["en"], idle:"Tap and speak", on:"Listening… tap when done",
+         style:"Natural, casual spoken English." },
+    id:{ name:"Bahasa Indonesia", en:"Indonesian", rec:"id-ID", tts:["id","in"], idle:"Ketuk lalu bicara", on:"Mendengarkan… ketuk kalau selesai",
+         style:"Casual everyday spoken Indonesian (bahasa sehari-hari): nggak, udah, aja, gimana, mau, bisa; address people as kamu or Mas, Mbak, Kak, Pak, Bu. Avoid formal written Indonesian such as Anda, tidak, sudah, bagaimana, apakah, mohon." },
+    th:{ name:"ไทย", en:"Thai", rec:"th-TH", tts:["th"], idle:"แตะแล้วพูด", on:"กำลังฟัง… แตะเมื่อพูดจบ",
+         style:"Friendly, natural spoken Thai, polite but not stiff. Do not guess the speaker's gender: avoid gendered polite particles unless the conversation makes it clear." },
+    vi:{ name:"Tiếng Việt", en:"Vietnamese", rec:"vi-VN", tts:["vi"], idle:"Chạm rồi nói", on:"Đang nghe… chạm khi nói xong",
+         style:"Natural, friendly spoken Vietnamese with polite but everyday wording." },
+    ja:{ name:"日本語", en:"Japanese", rec:"ja-JP", tts:["ja"], idle:"タップして話す", on:"聞いています…終わったらタップ",
+         style:"Polite but natural spoken Japanese (です/ます), not stiff or overly formal keigo." },
+    ko:{ name:"한국어", en:"Korean", rec:"ko-KR", tts:["ko"], idle:"누르고 말하기", on:"듣는 중… 끝나면 누르세요",
+         style:"Natural, polite spoken Korean (해요체)." },
+    zh:{ name:"中文", en:"Mandarin Chinese (Simplified)", rec:"zh-CN", tts:["zh"], idle:"点一下再说", on:"正在听…说完点一下",
+         style:"Natural, everyday spoken Mandarin in Simplified Chinese." },
+    ms:{ name:"Bahasa Melayu", en:"Malay", rec:"ms-MY", tts:["ms"], idle:"Sentuh dan bercakap", on:"Mendengar… sentuh bila selesai",
+         style:"Casual, natural spoken Malay." },
+    fil:{ name:"Filipino", en:"Filipino (Tagalog)", rec:"fil-PH", tts:["fil","tl"], idle:"Pindutin at magsalita", on:"Nakikinig… pindutin kapag tapos na",
+         style:"Natural, everyday spoken Filipino; Taglish is fine where locals would use it." },
+    hi:{ name:"हिन्दी", en:"Hindi", rec:"hi-IN", tts:["hi"], idle:"दबाएँ और बोलें", on:"सुन रहे हैं… बोलकर दबाएँ",
+         style:"Natural, everyday spoken Hindi in Devanagari, not Sanskritized formal Hindi." },
+    fr:{ name:"Français", en:"French", rec:"fr-FR", tts:["fr"], idle:"Touchez et parlez", on:"J'écoute… touchez quand c'est fini",
+         style:"Natural spoken French, polite (vous with strangers) but not stiff." },
+    de:{ name:"Deutsch", en:"German", rec:"de-DE", tts:["de"], idle:"Tippen und sprechen", on:"Ich höre zu… tippen, wenn fertig",
+         style:"Natural spoken German, polite (Sie with strangers) but not stiff." },
+    it:{ name:"Italiano", en:"Italian", rec:"it-IT", tts:["it"], idle:"Tocca e parla", on:"Ti ascolto… tocca quando hai finito",
+         style:"Natural, friendly spoken Italian." },
+    pt:{ name:"Português", en:"Portuguese (Brazil)", rec:"pt-BR", tts:["pt"], idle:"Toque e fale", on:"Ouvindo… toque quando terminar",
+         style:"Natural, casual Brazilian Portuguese." },
+    tr:{ name:"Türkçe", en:"Turkish", rec:"tr-TR", tts:["tr"], idle:"Dokun ve konuş", on:"Dinliyorum… bitince dokun",
+         style:"Natural, polite everyday spoken Turkish." },
+    ar:{ name:"العربية", en:"Arabic", rec:"ar-SA", tts:["ar"], idle:"اضغط وتكلّم", on:"أستمع… اضغط عند الانتهاء", rtl:true,
+         style:"Simple, natural Modern Standard Arabic that any Arabic speaker understands, not overly formal." }
+  };
+  var ORDER = ["es","en","id","th","vi","ja","ko","zh","ms","fil","hi","fr","de","it","pt","tr","ar"];
+
+  /* The other person's language comes from where the phone is: its time zone. No permission needed. */
+  var TZ = {
+    "Asia/Jakarta":"id","Asia/Pontianak":"id","Asia/Makassar":"id","Asia/Jayapura":"id",
+    "Asia/Bangkok":"th","Asia/Ho_Chi_Minh":"vi","Asia/Saigon":"vi","Asia/Tokyo":"ja","Asia/Seoul":"ko",
+    "Asia/Shanghai":"zh","Asia/Chongqing":"zh","Asia/Harbin":"zh","Asia/Urumqi":"zh","Asia/Taipei":"zh","Asia/Hong_Kong":"zh","Asia/Macau":"zh",
+    "Asia/Kuala_Lumpur":"ms","Asia/Kuching":"ms","Asia/Manila":"fil","Asia/Kolkata":"hi","Asia/Calcutta":"hi",
+    "Europe/Paris":"fr","Europe/Monaco":"fr","Europe/Berlin":"de","Europe/Vienna":"de","Europe/Zurich":"de",
+    "Europe/Rome":"it","Europe/Lisbon":"pt","Europe/Istanbul":"tr","Asia/Istanbul":"tr",
+    "Asia/Dubai":"ar","Asia/Riyadh":"ar","Asia/Qatar":"ar","Asia/Kuwait":"ar","Asia/Amman":"ar","Africa/Cairo":"ar","Africa/Casablanca":"ar",
+    "Europe/Madrid":"es","Atlantic/Canary":"es","Europe/London":"en","Europe/Dublin":"en","Asia/Singapore":"en","Australia/Sydney":"en","Australia/Melbourne":"en","Pacific/Auckland":"en"
+  };
+
+  function store(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+  function recall(k){ try{ var v = localStorage.getItem(k); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+
+  function guessMine(){
+    var list = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || "es"]);
+    for (var i = 0; i < list.length; i++){
+      var base = String(list[i]).toLowerCase().split("-")[0];
+      if (base === "tl") base = "fil";
+      if (base === "in") base = "id";
+      if (L[base]) return { code:base, tag:list[i] };
+    }
+    return { code:"es", tag:"es-ES" };
+  }
+  function guessTheirs(mine){
+    var tz = ""; try{ tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; }catch(e){}
+    var c = TZ[tz];
+    if (!c && /^America\/(Sao_Paulo|Recife|Fortaleza|Manaus|Bahia|Belem|Maceio|Cuiaba|Campo_Grande|Porto_Velho|Araguaina|Boa_Vista|Santarem|Noronha)/.test(tz)) c = "pt";
+    else if (!c && /^America\//.test(tz)) c = /^America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Toronto|Vancouver|Detroit|Halifax|Winnipeg|Edmonton)/.test(tz) ? "en" : "es";
+    if (!c || c === mine) c = mine === "en" ? "es" : "en";
+    return c;
+  }
+
+  var mineGuess = guessMine();
+  var saved = recall("iyv-langs") || {};
+  var lang = {
+    me: L[saved.me] ? saved.me : mineGuess.code,
+    them: L[saved.them] ? saved.them : null
+  };
+  if (!lang.them) lang.them = guessTheirs(lang.me);
+  // Use the phone's own regional variant for my language (es-CO, en-GB…).
+  var myTag = mineGuess.code === lang.me ? mineGuess.tag : null;
+  function recCode(side){ return (side === "me" && myTag && /-/.test(myTag)) ? myTag : L[lang[side]].rec; }
+  function other(side){ return side === "me" ? "them" : "me"; }
+
+  var apiKey = recall("iyv-key") || recall("hb-key") || "";
+  var noThinking = recall("hb-nothink") !== false;
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  var canSpeak = "speechSynthesis" in window && typeof SpeechSynthesisUtterance === "function";
+
+  /* What each half shows. big = what the other person said, translated for this reader. */
+  var view = {
+    me:   { big:"", bigLang:null, own:"", live:false, wait:false, err:"", picking:false },
+    them: { big:"", bigLang:null, own:"", live:false, wait:false, err:"", picking:false }
+  };
+  var history = [];
+
+  /* ---------- Claude ---------- */
+  function callClaude(prompt, signal){
+    if (!apiKey) return Promise.reject("nokey");
+    var body = {
+      model:MODEL, max_tokens:500,
+      system:"You are a live interpreter between two people talking face to face. Translate each message in the exact direction you are told and reply with the translation only.",
+      messages:[{ role:"user", content:prompt }]
+    };
+    if (noThinking) body.thinking = { type:"disabled" };
+    return fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{ "content-type":"application/json", "x-api-key":apiKey, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+      body:JSON.stringify(body), signal:signal
+    }).then(function(res){
+      return res.json().catch(function(){ return null; }).then(function(data){
+        if (!res.ok && res.status === 400 && body.thinking && /thinking/i.test(JSON.stringify(data || ""))){
+          noThinking = false; store("hb-nothink", false);
+          return callClaude(prompt, signal);
+        }
+        if (!res.ok) throw (res.status === 401 ? "badkey" : res.status === 429 ? "busy" : res.status >= 500 ? "busy" : "other");
+        var text = ((data && data.content) || []).filter(function(b){ return b.type === "text"; }).map(function(b){ return b.text; }).join("").trim();
+        if (!text) throw "other";
+        var m = text.match(/^["“«](.*)["”»]$/s);
+        return m ? m[1].trim() : text;
+      });
+    }, function(e){ throw (e && e.name === "AbortError") ? "abort" : "offline"; });
+  }
+  var ERR = {
+    nokey:"Falta la clave de Claude.",
+    badkey:"La clave de Claude no es válida.",
+    busy:"Claude está ocupado. Toca para repetir.",
+    offline:"Sin internet. Toca para repetir.",
+    other:"No se pudo traducir. Toca para repetir."
+  };
+  function prompt(from, to, text){
+    var S = L[lang[from]], T = L[lang[to]];
+    var ctx = history.slice(-6).map(function(h){ return (h.from === "me" ? "Traveler" : "Local") + " (" + L[h.lang].en + "): " + h.src + "\n  → " + h.out; }).join("\n");
+    return [
+      "Translate the NEW MESSAGE from " + S.en + " into " + T.en + ".",
+      "- The source language is fixed: " + S.en + ". Never detect or switch languages.",
+      "- Output only the translation, as natural spoken language. No quotes, notes or alternatives.",
+      "- " + T.style,
+      "- Translate questions too; never answer them.",
+      "- The text comes from speech recognition: silently fix obvious mistakes and punctuation.",
+      "- Keep names, numbers, prices and places exact.",
+      ctx ? "\nConversation so far (context only):\n" + ctx + "\n" : "",
+      "NEW MESSAGE:",
+      text
+    ].join("\n");
+  }
+
+  /* ---------- speaking ---------- */
+  var voices = [];
+  function loadVoices(){ try{ voices = speechSynthesis.getVoices() || []; }catch(e){ voices = []; } }
+  if (canSpeak){ loadVoices(); try{ speechSynthesis.addEventListener("voiceschanged", loadVoices); }catch(e){} }
+  function say(text, code){
+    if (!canSpeak || !text) return;
+    try{
+      speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text);
+      var pref = L[code].tts;
+      var v = voices.filter(function(x){ return pref.indexOf(String(x.lang || "").toLowerCase().replace("_","-").split("-")[0]) !== -1; });
+      var best = v.find(function(x){ return x.localService; }) || v[0];
+      u.lang = best ? best.lang : L[code].rec;
+      if (best) u.voice = best;
+      u.rate = 0.98;
+      speechSynthesis.speak(u);
+    }catch(e){}
+  }
+  function hush(){ if (canSpeak) try{ speechSynthesis.cancel(); }catch(e){} }
+
+  /* ---------- listening ---------- */
+  var session = null;
+  function merge(list){
+    var acc = "";
+    list.forEach(function(p){
+      p = String(p || "").trim();
+      if (!p) return;
+      if (!acc){ acc = p; return; }
+      var a = acc.toLowerCase(), b = p.toLowerCase();
+      if (b.indexOf(a) === 0) acc = p;
+      else if (b.length > 8 && a.indexOf(b) !== -1) return;
+      else acc += " " + p;
+    });
+    return acc;
+  }
+  function sText(s){ return merge([s.committed, s.cur, s.interim]); }
+  function norm(x){ return String(x || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim(); }
+
+  function talk(side){
+    if (!SR){ showErr("me", "Este navegador no reconoce voz. Ábrelo en Chrome."); return; }
+    if (!apiKey){ openKey(); return; }
+    wake();
+    if (session){
+      var same = session.side === side;
+      finish();
+      if (!same) setTimeout(function(){ talk(side); }, 350);
+      return;
+    }
+    hush();
+    view[side].own = ""; view[side].live = true; view[side].err = ""; view.me.err = "";
+    session = { side:side, committed:"", cur:"", interim:"", heard:false, active:false, finishing:false, fatal:false, timer:null, specTimer:null, spec:null, started:Date.now(), rec:null };
+    startRec(session);
+    paint();
+  }
+  function startRec(s){
+    var r = new SR();
+    r.lang = recCode(s.side);
+    r.interimResults = true; r.continuous = true; r.maxAlternatives = 1;
+    s.rec = r; s.cur = ""; s.interim = "";
+    r.onresult = function(e){
+      if (session !== s || s.rec !== r) return;
+      var finals = [], interim = "";
+      for (var i = 0; i < e.results.length; i++){
+        if (e.results[i].isFinal) finals.push(e.results[i][0].transcript); else interim += e.results[i][0].transcript;
+      }
+      s.cur = merge(finals); s.interim = interim.trim(); s.heard = true;
+      view[s.side].own = sText(s);
+      paintOwn(s.side);
+      clearTimeout(s.timer);
+      s.timer = setTimeout(function(){ if (session === s) finish(); }, PAUSE);
+      clearTimeout(s.specTimer);
+      s.specTimer = setTimeout(function(){ if (session === s && !s.finishing) speculate(s); }, SPEC_DELAY);
+    };
+    r.onerror = function(e){
+      var c = e && e.error;
+      if (c === "not-allowed" || c === "service-not-allowed"){ s.fatal = true; showErr("me", "Permite el micrófono: candado junto a la dirección › Permisos › Micrófono."); }
+      else if (c === "network"){ s.fatal = true; showErr("me", "El reconocimiento de voz necesita internet."); }
+      else if (c === "language-not-supported"){ s.fatal = true; showErr("me", "Este teléfono no reconoce " + L[lang[s.side]].name + " por voz."); }
+    };
+    r.onend = function(){
+      if (s.rec !== r) return;
+      s.active = false;
+      s.committed = sText(s); s.cur = ""; s.interim = "";
+      if (session !== s) return;
+      if (s.finishing || s.fatal){ complete(s); return; }
+      if (!s.heard && Date.now() - s.started > 8000){ complete(s); return; }
+      setTimeout(function(){ if (session === s && !s.finishing) startRec(s); }, 120);
+    };
+    try{ r.start(); s.active = true; }catch(e){ s.fatal = true; complete(s); }
+  }
+  function speculate(s){
+    var text = sText(s);
+    if (!text || (s.spec && norm(s.spec.text) === norm(text))) return;
+    dropSpec(s);
+    var ctl = typeof AbortController === "function" ? new AbortController() : null;
+    var p = callClaude(prompt(s.side, other(s.side), text), ctl ? ctl.signal : undefined);
+    p.catch(function(){});
+    s.spec = { text:text, promise:p, ctl:ctl };
+  }
+  function dropSpec(s){ if (s.spec && s.spec.ctl){ try{ s.spec.ctl.abort(); }catch(e){} } s.spec = null; }
+  function finish(){
+    var s = session;
+    if (!s || s.finishing) return;
+    s.finishing = true;
+    clearTimeout(s.timer); clearTimeout(s.specTimer);
+    if (!s.active){ complete(s); return; }
+    try{ s.rec.stop(); }catch(e){ complete(s); return; }
+    setTimeout(function(){ if (session === s) complete(s); }, 1500);
+  }
+  function complete(s){
+    if (session !== s) return;
+    clearTimeout(s.timer); clearTimeout(s.specTimer);
+    var text = sText(s);
+    session = null;
+    view[s.side].live = false;
+    if (!text){ dropSpec(s); paint(); return; }
+    var pre = (s.spec && norm(s.spec.text) === norm(text)) ? s.spec.promise : null;
+    if (!pre) dropSpec(s);
+    view[s.side].own = text;
+    translate(s.side, text, pre);
+  }
+
+  var lastJob = null;
+  function translate(from, text, pre){
+    var to = other(from);
+    var job = { from:from, to:to, text:text, langFrom:lang[from], langTo:lang[to] };
+    lastJob = job;
+    view[to].big = ""; view[to].wait = true; view[to].err = ""; view.me.err = "";
+    paint();
+    var ask = function(){ return callClaude(prompt(from, to, text)); };
+    (pre ? pre.catch(function(){ return ask(); }) : ask()).then(function(out){
+      if (lastJob !== job) return;
+      view[to].big = out; view[to].bigLang = job.langTo; view[to].wait = false;
+      history.push({ from:from, lang:job.langFrom, src:text, out:out });
+      if (history.length > 20) history.shift();
+      paint();
+      say(out, job.langTo);
+    }).catch(function(code){
+      if (lastJob !== job) return;
+      view[to].wait = false;
+      showErr("me", ERR[code] || ERR.other, job);
+    });
+  }
+  function showErr(side, text, job){ view[side].err = text; view[side].retry = job || null; paint(); }
+
+  var lock = null;
+  function wake(){
+    if (lock || !("wakeLock" in navigator)) return;
+    navigator.wakeLock.request("screen").then(function(l){ lock = l; l.addEventListener("release", function(){ lock = null; }); }).catch(function(){});
+  }
+  document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible" && lock === null && history.length) wake(); });
+
+  /* ---------- drawing ---------- */
+  var MIC = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+  var REPLAY = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 9a4.5 4.5 0 0 1 0 6"/></svg>';
+  var CLOSE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  var HALF = { me:document.getElementById("halfMe"), them:document.getElementById("halfThem") };
+  function el(tag, cls, text){ var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+
+  function paintHalf(side){
+    var v = view[side], code = lang[side], root = HALF[side];
+    root.textContent = "";
+    root.lang = code === "fil" ? "fil" : code;
+    var chip = el("button", "chip"); chip.type = "button";
+    chip.setAttribute("aria-label", L[code].name);
+    chip.appendChild(el("span", "code", code.toUpperCase()));
+    chip.appendChild(document.createTextNode(L[code].name));
+    chip.addEventListener("click", function(){ v.picking = true; paint(); });
+    root.appendChild(chip);
+
+    var read = el("div", "read");
+    var big;
+    if (v.wait) big = el("p", "big wait", "• • •");
+    else if (v.big){ big = el("p", "big", v.big); big.dir = "auto"; }
+    else big = el("p", "big hello", L[code].name);
+    read.appendChild(big);
+    if (v.big && !v.wait && canSpeak){
+      var again = el("button", "again"); again.type = "button"; again.innerHTML = REPLAY;
+      again.setAttribute("aria-label", "▶");
+      again.addEventListener("click", function(){ say(v.big, v.bigLang || code); });
+      read.appendChild(again);
+    }
+    if (v.own){ var own = el("p", "own" + (v.live ? " live" : ""), v.own); own.dir = "auto"; read.appendChild(own); }
+    if (v.err){
+      var er = el("p", "err", v.err);
+      if (v.retry){ er.style.cursor = "pointer"; er.addEventListener("click", function(){ var j = v.retry; v.err = ""; v.retry = null; translate(j.from, j.text); }); }
+      read.appendChild(er);
+    }
+    root.appendChild(read);
+
+    var btn = el("button", "talk" + (v.live ? " on" : "")); btn.type = "button"; btn.id = "talk-" + side;
+    btn.innerHTML = MIC; btn.appendChild(el("span", null, v.live ? L[code].on : L[code].idle));
+    btn.setAttribute("aria-pressed", String(!!v.live));
+    btn.disabled = !SR;
+    btn.addEventListener("click", function(){ talk(side); });
+    root.appendChild(btn);
+
+    if (v.picking){
+      var pick = el("div", "pick");
+      var close = el("button", "close"); close.type = "button"; close.innerHTML = CLOSE; close.setAttribute("aria-label", "✕");
+      close.addEventListener("click", function(){ v.picking = false; paint(); });
+      pick.appendChild(close);
+      var grid = el("div", "langs");
+      ORDER.forEach(function(c){
+        var b = el("button", null, L[c].name); b.type = "button"; b.lang = c;
+        b.setAttribute("aria-pressed", String(c === code));
+        b.addEventListener("click", function(){
+          v.picking = false;
+          if (c !== lang[side]){
+            if (c === lang[other(side)]) lang[other(side)] = lang[side];
+            lang[side] = c;
+            if (side === "me") myTag = null;
+            store("iyv-langs", { me:lang.me, them:lang.them });
+            history = []; view.me.big = view.them.big = view.me.own = view.them.own = "";
+          }
+          paint();
+        });
+        grid.appendChild(b);
+      });
+      pick.appendChild(grid);
+      root.appendChild(pick);
+    }
+  }
+  function paintOwn(side){
+    var n = HALF[side].querySelector(".own");
+    if (!n){ paintHalf(side); return; }
+    n.textContent = view[side].own;
+  }
+  function paint(){ paintHalf("them"); paintHalf("me"); }
+
+  /* ---------- key (prototype only) ---------- */
+  var keySheet = document.getElementById("keySheet");
+  function openKey(){ keySheet.hidden = false; setTimeout(function(){ document.getElementById("keyInput").focus(); }, 50); }
+  document.getElementById("keyForm").addEventListener("submit", function(e){
+    e.preventDefault();
+    var v = document.getElementById("keyInput").value.trim();
+    if (!v) return;
+    apiKey = v; store("iyv-key", v); keySheet.hidden = true;
+  });
+
+  if (!SR) view.me.err = "Este navegador no reconoce voz. Ábrelo en Chrome.";
+  paint();
+  if (!apiKey) openKey();
+})();
+</script>
+</body>
+</html>
