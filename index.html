@@ -374,7 +374,8 @@ svg{flex:none}
         "anthropic-version":"2023-06-01",
         "anthropic-dangerous-direct-browser-access":"true"
       },
-      body:JSON.stringify({ model:o.model, max_tokens:o.maxTokens || 600, system:o.system, messages:[{ role:"user", content:o.prompt }] })
+      body:JSON.stringify({ model:o.model, max_tokens:o.maxTokens || 600, system:o.system, messages:[{ role:"user", content:o.prompt }] }),
+      signal:o.signal
     }).then(function(res){
       return res.json().catch(function(){ return null; }).then(function(data){
         if (!res.ok){
@@ -433,11 +434,13 @@ svg{flex:none}
     ].join("\n");
   }
 
-  function translate(t){
+  // pre: a translation of this exact text already requested while waiting for the pause.
+  function translate(t, pre){
     t.status = "pending"; t.error = null; t.out = ""; t.check = null; t.checkErr = null; t.fixed = false; t.learned = null;
     renderTurn(t); toEnd();
     if (!apiKey){ fail(t, "nokey"); openKey(); return; }
-    callClaude({ model:MODELS[quality], maxTokens:600, system:SYSTEM, prompt:buildMessage(t) })
+    var ask = function(){ return callClaude({ model:MODELS[quality], maxTokens:600, system:SYSTEM, prompt:buildMessage(t) }); };
+    (pre ? pre.catch(function(){ return ask(); }) : ask())
       .then(function(text){
         text = tidy(text);
         if (!text){ fail(t, "empty"); return; }
@@ -541,7 +544,7 @@ svg{flex:none}
     var t = { id: uid(), from: from, to: from === "es" ? "id" : "es", src: "", out: "", status: "live" };
     turns.push(t);
     renderTurn(t); toEnd();
-    session = { from: from, turn: t, committed: "", cur: "", interim: "", heard: false, active: false, finishing: false, fatal: false, timer: null, started: Date.now(), rec: null };
+    session = { from: from, turn: t, committed: "", cur: "", interim: "", heard: false, active: false, finishing: false, fatal: false, timer: null, started: Date.now(), rec: null, spec: null, specTimer: null };
     startRec(session);
     paintMics();
   }
@@ -567,6 +570,7 @@ svg{flex:none}
       var n = log.querySelector('[data-id="' + s.turn.id + '"] .src');
       if (n) n.textContent = shown || listeningText(s.from);
       armSilence(s);
+      armSpec(s);
     };
     r.onerror = function(e){
       var code = e && e.error;
@@ -598,6 +602,31 @@ svg{flex:none}
     clearTimeout(s.timer);
     s.timer = setTimeout(function(){ if (session === s) finishSession(); }, PAUSES[pauseKey]);
   }
+  /* Speculative translation: as soon as the speaker pauses, start translating
+     what was heard. If nothing new is said before the pause ends, that
+     translation is used and most of the waiting disappears. */
+  var SPEC_DELAY = 450;
+  function normText(x){ return String(x || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim(); }
+  function armSpec(s){
+    clearTimeout(s.specTimer);
+    s.specTimer = setTimeout(function(){ if (session === s && !s.finishing) speculate(s); }, SPEC_DELAY);
+  }
+  function speculate(s){
+    if (!apiKey) return;
+    var text = sessionText(s);
+    if (!text) return;
+    if (s.spec && normText(s.spec.text) === normText(text)) return;
+    dropSpec(s);
+    var ctl = typeof AbortController === "function" ? new AbortController() : null;
+    var probe = { from: s.from, to: s.turn.to, src: text };
+    var p = callClaude({ model:MODELS[quality], maxTokens:600, system:SYSTEM, prompt:buildMessage(probe), signal: ctl ? ctl.signal : undefined });
+    p.catch(function(){});
+    s.spec = { text: text, promise: p, ctl: ctl };
+  }
+  function dropSpec(s){
+    if (s.spec && s.spec.ctl){ try{ s.spec.ctl.abort(); }catch(e){} }
+    s.spec = null;
+  }
   function finishSession(){
     var s = session;
     if (!s || s.finishing) return;
@@ -610,17 +639,22 @@ svg{flex:none}
   function completeSession(s){
     if (session !== s) return;
     clearTimeout(s.timer);
+    clearTimeout(s.specTimer);
     var text = sessionText(s);
     session = null;
     paintMics();
     var t = s.turn;
     if (!text){
+      dropSpec(s);
       turns = turns.filter(function(x){ return x !== t; });
       var n = log.querySelector('[data-id="' + t.id + '"]'); if (n) n.remove();
       return;
     }
+    var pre = null;
+    if (s.spec && normText(s.spec.text) === normText(text)) pre = s.spec.promise;
+    else dropSpec(s);
     t.src = text;
-    translate(t);
+    translate(t, pre);
   }
   MIC.es.addEventListener("click", function(){ listen("es"); });
   MIC.id.addEventListener("click", function(){ listen("id"); });
