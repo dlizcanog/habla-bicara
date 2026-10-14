@@ -364,8 +364,13 @@ svg{flex:none}
   var uid = function(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
 
   /* ---------- Claude API ---------- */
+  // Claude 5.5 models think before answering unless told not to. A translation
+  // needs no thinking, and skipping it makes the reply arrive much sooner.
+  var noThinking = recall("hb-nothink") !== false;
   function callClaude(o){
     if (!apiKey) return Promise.reject("nokey");
+    var body = { model:o.model, max_tokens:o.maxTokens || 600, system:o.system, messages:[{ role:"user", content:o.prompt }] };
+    if (noThinking) body.thinking = { type:"disabled" };
     return fetch("https://api.anthropic.com/v1/messages", {
       method:"POST",
       headers:{
@@ -374,12 +379,16 @@ svg{flex:none}
         "anthropic-version":"2023-06-01",
         "anthropic-dangerous-direct-browser-access":"true"
       },
-      body:JSON.stringify({ model:o.model, max_tokens:o.maxTokens || 600, system:o.system, messages:[{ role:"user", content:o.prompt }] }),
+      body:JSON.stringify(body),
       signal:o.signal
     }).then(function(res){
       return res.json().catch(function(){ return null; }).then(function(data){
         if (!res.ok){
           var s = res.status;
+          if (s === 400 && body.thinking && /thinking/i.test(JSON.stringify(data || ""))){
+            noThinking = false; store("hb-nothink", false);
+            return callClaude(o);
+          }
           if (s === 401) markKey(true);
           throw (s === 401 ? "badkey" : (s === 403 || s === 402) ? "nocredit" : s === 429 ? "ratelimit" : (s === 529 || s >= 500) ? "busy" : "other");
         }

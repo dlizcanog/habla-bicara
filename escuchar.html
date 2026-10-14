@@ -274,14 +274,21 @@ a{color:inherit}
   }
 
   /* ---------- Claude ---------- */
+  var noThinking = recall("hb-nothink") !== false;
   function callClaude(o){
     if (!apiKey) return Promise.reject("nokey");
+    var body = { model:o.model, max_tokens:o.maxTokens || 600, system:o.system, messages:[{ role:"user", content:o.prompt }] };
+    if (noThinking) body.thinking = { type:"disabled" };
     return fetch("https://api.anthropic.com/v1/messages", {
       method:"POST",
       headers:{ "content-type":"application/json", "x-api-key":apiKey, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-      body:JSON.stringify({ model:o.model, max_tokens:o.maxTokens || 600, system:o.system, messages:[{ role:"user", content:o.prompt }] })
+      body:JSON.stringify(body)
     }).then(function(res){
       return res.json().catch(function(){ return null; }).then(function(data){
+        if (!res.ok && res.status === 400 && body.thinking && /thinking/i.test(JSON.stringify(data || ""))){
+          noThinking = false; store("hb-nothink", false);
+          return callClaude(o);
+        }
         if (!res.ok){ var s = res.status; throw (s === 401 ? "badkey" : (s === 403 || s === 402) ? "nocredit" : s === 429 ? "ratelimit" : (s === 529 || s >= 500) ? "busy" : "other"); }
         var text = ((data && data.content) || []).filter(function(b){ return b.type === "text"; }).map(function(b){ return b.text; }).join("").trim();
         if (!text) throw "empty";
